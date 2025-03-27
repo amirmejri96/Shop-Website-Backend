@@ -234,7 +234,7 @@ app.post('/addtocart', fetchUser, async (req, res) => {
 
 
 // Creating endpoint to remove product from cartData
-app.post('/removefromcart', fetchUser, async ()=>{
+app.post('/removefromcart', fetchUser, async (req, res)=>{
     let userData = await Users.findOne({_id:req.user.id})
     if (userData.cartData[req.body.itemId]>0)
     userData.cartData[req.body.itemId] -= 1
