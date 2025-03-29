@@ -2,7 +2,9 @@ const port = 4000
 const express = require('express')
 const app = express()
 const mongoose = require('mongoose')
+require('dotenv').config()
 const jwt = require('jsonwebtoken')
+const bcrypt = require('bcryptjs')
 const multer = require('multer')
 const path = require('path')
 const cors = require('cors')
@@ -13,7 +15,7 @@ app.use(cors())
 
 
 // DataBase connection with mongoDB
-mongoose.connect("mongodb+srv://amirmejri1996:Habibradhia2308@cluster0.b8n12.mongodb.net/e-commerce")
+mongoose.connect(process.env.MONGO_URI);
 
 // API creation 
 app.get('/', (req, res) => {
@@ -148,53 +150,59 @@ const Users = mongoose.model('Users', {
 
 // Creating Endpoint for registering the user
 app.post('/signup', async (req, res) => {
-    let check = await Users.findOne({ email: req.body.email })
+    let check = await Users.findOne({ email: req.body.email });
     if (check) {
-        return res.status(400).json({ success: false, errors: 'Existing User With Same Email Address' })
+        return res.status(400).json({ success: false, errors: 'Existing User With Same Email Address' });
     }
-    let cart = {}
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(req.body.password, salt);
+
+    let cart = {};
     for (let i = 0; i < 300; i++) {
         cart[i] = 0;
     }
+
     const user = new Users({
         name: req.body.username,
         email: req.body.email,
-        password: req.body.password,
+        password: hashedPassword,
         cartData: cart
-    })
-    await user.save()
+    });
 
-    const data = {
-        user: {
-            id: user.id
-        }
-    }
+    await user.save();
 
-    const token = jwt.sign(data, 'secret_ecom')
-    res.json({ success: true, token })
-})
+    const data = { user: { id: user.id } };
+    const token = jwt.sign(data, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    res.json({ success: true, token });
+});
 
 
 // Creating Endpoint for user login
 app.post('/login', async (req, res) => {
-    let user = await Users.findOne({ email: req.body.email })
-    if (user) {
-        const passCompare = req.body.password === user.password
-        if (passCompare) {
-            const data = {
-                user: {
-                    id: user.id
-                }
-            }
-            const token = jwt.sign(data, 'secret_ecom')
-            res.json({ success: true, token })
-        } else {
-            res.json({ success: false, errors: 'Wrong Password' })
+    try {
+        let user = await Users.findOne({ email: req.body.email });
+
+        if (!user) {
+            return res.status(400).json({ success: false, errors: 'Email incorrect' });
         }
-    } else {
-        res.json({ success: false, errors: 'Wrong Email Address' })
+
+        const passCompare = await bcrypt.compare(req.body.password, user.password);
+
+        if (!passCompare) {
+            return res.status(400).json({ success: false, errors: 'Mot de passe incorrect' });
+        }
+
+        const data = { user: { id: user.id } };
+        const token = jwt.sign(data, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+        res.json({ success: true, token });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, errors: 'Erreur interne du serveur' });
     }
-})
+});
 
 
 // Creating endpoint for popular in women category
@@ -256,6 +264,13 @@ app.get('/newcollections', async (req, res) => {
 app.post('/getcart', fetchUser, async (req, res)=> {
     let userData = await Users.findOne({_id:req.user.id})
     res.json(userData.cartData)
+})
+
+
+// Get all users
+app.get('/allusers', async (req, res) => {
+    let users = await Users.find({}, '-password'); // Exclure le mot de passe pour la sécurité
+    res.json(users);
 })
 
 
